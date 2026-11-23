@@ -24,14 +24,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Install web dependencies & build dist
         env:
           VITE_DEFAULT_RELAY_URL: ${{ github.event.inputs.default_relay_url || vars.VITE_DEFAULT_RELAY_URL || '' }}
           VITE_GITHUB_REPO: ${{ github.repository }}
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Prepare desktop wrapper assets
@@ -60,7 +59,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - uses: actions/setup-java@v4
         with:
@@ -72,7 +70,7 @@ jobs:
           VITE_DEFAULT_RELAY_URL: ${{ github.event.inputs.default_relay_url || vars.VITE_DEFAULT_RELAY_URL || '' }}
           VITE_GITHUB_REPO: ${{ github.repository }}
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Initialize Capacitor Android project
