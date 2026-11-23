@@ -36,6 +36,7 @@ jobs:
       - name: Prepare desktop wrapper assets
         shell: pwsh
         run: |
+          if (Test-Path desktop/dist) { Remove-Item -Recurse -Force desktop/dist }
           Copy-Item -Recurse -Force dist desktop/dist
           Copy-Item -Force public/pwa-512x512.png desktop/icon.png
 
