@@ -1,0 +1,133 @@
+name: Build & Release MiX Installers (.exe & .apk)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      default_relay_url:
+        description: 'Optional default wss://.../ws/p2p relay URL baked into APK/EXE'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows Installer (MiX-Setup.exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install web dependencies & build dist
+        env:
+          VITE_DEFAULT_RELAY_URL: ${{ github.event.inputs.default_relay_url || vars.VITE_DEFAULT_RELAY_URL || '' }}
+          VITE_GITHUB_REPO: ${{ github.repository }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Prepare desktop wrapper assets
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse -Force dist desktop/dist
+          Copy-Item -Force public/pwa-512x512.png desktop/icon.png
+
+      - name: Install desktop dependencies & package MiX-Setup.exe
+        working-directory: desktop
+        run: |
+          npm install
+          npx electron-builder --win nsis --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mix-windows-installer
+          path: desktop/release/MiX-Setup.exe
+
+  build-android:
+    name: Build Android APK (MiX-Android.apk)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Build web bundle
+        env:
+          VITE_DEFAULT_RELAY_URL: ${{ github.event.inputs.default_relay_url || vars.VITE_DEFAULT_RELAY_URL || '' }}
+          VITE_GITHUB_REPO: ${{ github.repository }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Initialize Capacitor Android project
+        run: |
+          npm install --no-save @capacitor/core@^7.0.0 @capacitor/cli@^7.0.0 @capacitor/android@^7.0.0
+          npx cap add android
+          npx cap sync android
+
+      - name: Add Android microphone & network permissions
+        run: |
+          node -e '
+            const fs = require("fs");
+            const manifestPath = "android/app/src/main/AndroidManifest.xml";
+            let xml = fs.readFileSync(manifestPath, "utf8");
+            const perms = [
+              "<uses-permission android:name=\"android.permission.INTERNET\" />",
+              "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />",
+              "<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />",
+              "<uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />"
+            ];
+            for (const p of perms) {
+              if (!xml.includes(p)) {
+                xml = xml.replace("<application", p + "\n    <application");
+              }
+            }
+            fs.writeFileSync(manifestPath, xml);
+          '
+
+      - name: Build APK with Gradle
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk ../MiX-Android.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mix-android-apk
+          path: MiX-Android.apk
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'latest-build' }}
+          name: MiX Messenger (${{ github.ref_type == 'tag' && github.ref_name || 'Latest' }})
+          generate_release_notes: true
+          files: |
+            artifacts/mix-windows-installer/MiX-Setup.exe
+            artifacts/mix-android-apk/MiX-Android.apk

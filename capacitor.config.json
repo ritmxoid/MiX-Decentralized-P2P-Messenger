@@ -1,0 +1,12 @@
+{
+  "appId": "app.mixmessenger.p2p",
+  "appName": "MiX",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
